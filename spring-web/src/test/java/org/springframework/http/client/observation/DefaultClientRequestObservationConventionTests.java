@@ -18,6 +18,8 @@ package org.springframework.http.client.observation;
 
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 
 import io.micrometer.common.KeyValue;
 import io.micrometer.common.KeyValues;
@@ -154,6 +156,46 @@ class DefaultClientRequestObservationConventionTests {
 		context.setError(new RuntimeException("error"));
 		KeyValues lowCardinality = this.observationConvention.getLowCardinalityKeyValues(context);
 		assertThat(lowCardinality).contains(KeyValue.of("exception", "RuntimeException"));
+	}
+
+	@Test
+	void addsKeyValueForNonStandardHttpMethod() {
+		ClientRequestObservationContext context = createContext(
+				new MockClientHttpRequest(HttpMethod.valueOf("CUSTOM"), "/test"), response);
+		assertThat(this.observationConvention.getLowCardinalityKeyValues(context))
+				.contains(KeyValue.of("method", "none"));
+	}
+
+	@Test
+	void addsKeyValueForWellKnownHttpMethods() {
+		for (HttpMethod httpMethod : HttpMethod.values()) {
+			ClientRequestObservationContext context = createContext(
+					new MockClientHttpRequest(HttpMethod.valueOf(httpMethod.name()), "/test"), response);
+			assertThat(this.observationConvention.getLowCardinalityKeyValues(context))
+					.contains(KeyValue.of("method", httpMethod.name()));
+		}
+	}
+
+	@Test
+	void doesNotCreateMethodKeyValuePerNonStandardHttpMethod() {
+		Set<String> methodValues = new HashSet<>();
+		for (int i = 0; i < 100; i++) {
+			ClientRequestObservationContext context = createContext(
+					new MockClientHttpRequest(HttpMethod.valueOf("CUSTOM" + i), "/test"), response);
+			for (KeyValue keyValue : this.observationConvention.getLowCardinalityKeyValues(context)) {
+				if (keyValue.getKey().equals("method")) {
+					methodValues.add(keyValue.getValue());
+				}
+			}
+		}
+		ClientRequestObservationContext context = createContext(
+				new MockClientHttpRequest(HttpMethod.valueOf("get"), "/test"), response);
+		for (KeyValue keyValue : this.observationConvention.getLowCardinalityKeyValues(context)) {
+			if (keyValue.getKey().equals("method")) {
+				methodValues.add(keyValue.getValue());
+			}
+		}
+		assertThat(methodValues).containsExactly("none");
 	}
 
 	private ClientRequestObservationContext createContext(ClientHttpRequest request, ClientHttpResponse response) {
